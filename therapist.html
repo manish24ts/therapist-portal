@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Therapist Dashboard</title>
+    <style>
+        /* Previous styles remain the same */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: #f0f2f5;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .dashboard {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+            height: calc(100vh - 40px);
+        }
+
+        .sidebar {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            height: 100%;
+            overflow-y: auto;
+        }
+
+        .chat-section {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .chat-header {
+            padding: 20px;
+            border-bottom: 1px solid #e1e1e1;
+        }
+
+        .chat-messages {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .message {
+            max-width: 70%;
+            padding: 12px;
+            border-radius: 12px;
+            margin: 4px 0;
+            word-wrap: break-word;
+        }
+
+        .user-message {
+            background: #f0f2f5;
+            align-self: flex-start;
+        }
+
+        .therapist-message {
+            background: #1a73e8;
+            color: white;
+            align-self: flex-end;
+        }
+
+        .chat-input {
+            padding: 20px;
+            border-top: 1px solid #e1e1e1;
+            display: flex;
+            gap: 10px;
+        }
+
+        .user-card {
+            padding: 15px;
+            border-radius: 8px;
+            background: #f8f9fa;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .user-card:hover {
+            background: #e9ecef;
+        }
+
+        .user-card.active {
+            background: #e3f2fd;
+        }
+
+        input[type="text"] {
+            flex-grow: 1;
+            padding: 12px;
+            border: 2px solid #e1e1e1;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 12px 24px;
+            background: #1a73e8;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background: #1557b0;
+        }
+
+        .timestamp {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        .no-chats {
+            text-align: center;
+            color: #666;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="sidebar">
+            <h2>Active Users</h2>
+            <div id="usersList"></div>
+        </div>
+        <div class="chat-section">
+            <div class="chat-header">
+                <h2 id="currentUserName">Select a user to start chat</h2>
+            </div>
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-input">
+                <input 
+                    type="text" 
+                    id="messageInput" 
+                    placeholder="Type your message..." 
+                    disabled
+                >
+                <button id="sendButton" onclick="sendMessage()" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { 
+            getFirestore, 
+            collection, 
+            query, 
+            where, 
+            onSnapshot,
+            doc,
+            updateDoc,
+            addDoc,
+            orderBy,
+            serverTimestamp,
+            getDocs 
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDxHoKEmXiz8FGNeZ5iiEdUexpx8DXatVw",
+            authDomain: "portal-ffc70.firebaseapp.com",
+            projectId: "portal-ffc70",
+            storageBucket: "portal-ffc70.firebasestorage.app",
+            messagingSenderId: "43010980889",
+            appId: "1:43010980889:web:e350cae785d02069bdbe88",
+            measurementId: "G-QDWG7CBZMK"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        let currentUserId = null;
+        let currentUserName = null;
+        const therapistId = 'therapist39';
+
+        // Listen for unassigned users
+        const q = query(
+            collection(db, "users"),
+            where("therapistId", "==", "NULL"),
+            where("status", "==", true),
+            orderBy("timestamp", "desc")
+        );
+
+        onSnapshot(q, (snapshot) => {
+            const usersList = document.getElementById('usersList');
+            if (snapshot.empty) {
+                usersList.innerHTML = '<div class="no-chats">No pending requests</div>';
+                return;
+            }
+
+            usersList.innerHTML = '';
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                const userCard = document.createElement('div');
+                userCard.className = 'user-card';
+                userCard.innerHTML = `
+                    <div class="user-info">
+                        <span class="user-name">${data.name}</span>
+                        <span class="user-age">${data.age} years</span>
+                    </div>
+                    <div class="user-details">
+                        <strong>Concern:</strong> ${data.primaryConcern}
+                    </div>
+                    <div class="user-details">
+                        ${data.description}
+                    </div>
+                    <div class="timestamp">
+                        ${new Date(data.timestamp).toLocaleString()}
+                    </div>
+                `;
+                userCard.onclick = () => acceptChat(doc.id, data);
+                usersList.appendChild(userCard);
+            });
+        });
+
+        // Function to accept chat
+        async function acceptChat(userId, userData) {
+            try {
+                currentUserId = userId;
+                currentUserName = userData.name;
+                
+                // Update user document with therapist ID
+                await updateDoc(doc(db, "users", userId), {
+                    therapistId: therapistId
+                });
+
+                // Create initial chat message from user's description
+                await addDoc(collection(db, "chats"), {
+                    userId: userId,
+                    therapistId: null, // This indicates it's a user message
+                    message: userData.description,
+                    timestamp: serverTimestamp()
+                });
+
+                // Add welcome message from therapist
+                await addDoc(collection(db, "chats"), {
+                    userId: userId,
+                    therapistId: therapistId,
+                    message: `Hello ${userData.name}, I'm here to help. How are you feeling right now?`,
+                    timestamp: serverTimestamp()
+                });
+
+                // Enable chat interface
+                document.getElementById('currentUserName').textContent = userData.name;
+                document.getElementById('messageInput').disabled = false;
+                document.getElementById('sendButton').disabled = false;
+
+                // Load existing chat messages
+                loadChatMessages(userId);
+            } catch (error) {
+                console.error("Error accepting chat:", error);
+                alert("Error accepting chat. Please try again.");
+            }
+        }
+
+        // Function to load chat messages
+        async function loadChatMessages(userId) {
+            const chatQuery = query(
+                collection(db, "chats"),
+                where("userId", "==", userId),
+                orderBy("timestamp", "asc")
+            );
+
+            onSnapshot(chatQuery, (snapshot) => {
+                const chatMessages = document.getElementById('chatMessages');
+                chatMessages.innerHTML = '';
+                
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = `message ${data.therapistId ? 'therapist-message' : 'user-message'}`;
+                    messageDiv.innerHTML = `
+                        ${data.message}
+                        <div class="timestamp">${data.timestamp ? new Date(data.timestamp.toDate()).toLocaleString() : new Date().toLocaleString()}</div>
+                    `;
+                    chatMessages.appendChild(messageDiv);
+                });
+
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            });
+        }
+
+        // Function to send message
+        window.sendMessage = async () => {
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+            
+            if (message && currentUserId) {
+                try {
+                    await addDoc(collection(db, "chats"), {
+                        userId: currentUserId,
+                        therapistId: therapistId,
+                        message: message,
+                        timestamp: serverTimestamp()
+                    });
+                    
+                    messageInput.value = '';
+                } catch (error) {
+                    console.error("Error sending message:", error);
+                    alert("Error sending message. Please try again.");
+                }
+            }
+        };
+
+        // Enter key to send message
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
